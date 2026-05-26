@@ -6,85 +6,80 @@ import plotly.express as px
 st.set_page_config(page_title="Space Tracker", layout="wide")
 
 st.title("🛰️ Real-Time Space Objects Tracker Dashboard")
-st.write("Live tracking of satellites (Starlink dataset) from public API")
+st.write("Live Starlink satellite data from SpaceX API")
 
-# Fetch live data
 @st.cache_data
 def load_data():
     url = "https://api.spacexdata.com/v4/starlink"
     response = requests.get(url)
     data = response.json()
-    return pd.json_normalize(data)
+    df = pd.json_normalize(data)
+    return df
 
 df = load_data()
 
-# Clean important columns
-df = df[[
-    "spaceTrack.OBJECT_NAME",
-    "spaceTrack.LAUNCH_DATE",
-    "spaceTrack.INCLINATION",
-    "spaceTrack.LONGITUDE",
-    "spaceTrack.ALTITUDE"
-]].dropna()
+# ✅ Check available columns (IMPORTANT FIX)
+st.write("Available columns:", df.columns)
 
-df.columns = ["Name", "Launch Date", "Inclination", "Longitude", "Altitude"]
+# Keep only existing safe columns
+cols = []
 
-st.sidebar.header("🔍 Filters")
+if "spaceTrack.OBJECT_NAME" in df.columns:
+    cols.append("spaceTrack.OBJECT_NAME")
 
-# Filter by altitude range
-alt_range = st.sidebar.slider(
-    "Select Altitude Range (km)",
-    int(df["Altitude"].min()),
-    int(df["Altitude"].max()),
-    (300, 600)
-)
+if "spaceTrack.LAUNCH_DATE" in df.columns:
+    cols.append("spaceTrack.LAUNCH_DATE")
 
-filtered_df = df[
-    (df["Altitude"] >= alt_range[0]) &
-    (df["Altitude"] <= alt_range[1])
-]
+if "spaceTrack.INCLINATION" in df.columns:
+    cols.append("spaceTrack.INCLINATION")
 
-# Show raw data
-if st.checkbox("Show raw satellite data"):
-    st.dataframe(filtered_df)
+if "spaceTrack.LONGITUDE" in df.columns:
+    cols.append("spaceTrack.LONGITUDE")
 
-# 🌍 Satellite altitude distribution
+if "spaceTrack.ALTITUDE" in df.columns:
+    cols.append("spaceTrack.ALTITUDE")
+
+# If API structure changes, fallback
+if len(cols) == 0:
+    st.error("API structure changed. Showing raw data instead.")
+    st.dataframe(df)
+    st.stop()
+
+df = df[cols].dropna()
+
+# Rename safely
+rename_map = {
+    "spaceTrack.OBJECT_NAME": "Name",
+    "spaceTrack.LAUNCH_DATE": "Launch Date",
+    "spaceTrack.INCLINATION": "Inclination",
+    "spaceTrack.LONGITUDE": "Longitude",
+    "spaceTrack.ALTITUDE": "Altitude",
+}
+
+df = df.rename(columns=rename_map)
+
+st.sidebar.header("Filters")
+
+if "Altitude" in df.columns:
+    alt_range = st.sidebar.slider(
+        "Altitude Range",
+        int(df["Altitude"].min()),
+        int(df["Altitude"].max()),
+        (300, 600)
+    )
+
+    df = df[(df["Altitude"] >= alt_range[0]) & (df["Altitude"] <= alt_range[1])]
+
 st.subheader("📊 Satellite Altitude Distribution")
 
-fig1 = px.histogram(
-    filtered_df,
-    x="Altitude",
-    nbins=30,
-    title="Altitude Distribution of Satellites"
-)
+if "Altitude" in df.columns:
+    fig1 = px.histogram(df, x="Altitude", nbins=30)
+    st.plotly_chart(fig1, use_container_width=True)
 
-st.plotly_chart(fig1, use_container_width=True)
+st.subheader("🛰️ Orbit Analysis")
 
-# 🛰️ Orbital inclination vs altitude
-st.subheader("🛰️ Orbit Patterns")
+if "Inclination" in df.columns and "Altitude" in df.columns:
+    fig2 = px.scatter(df, x="Inclination", y="Altitude")
+    st.plotly_chart(fig2, use_container_width=True)
 
-fig2 = px.scatter(
-    filtered_df,
-    x="Inclination",
-    y="Altitude",
-    hover_data=["Name"],
-    title="Inclination vs Altitude (Orbital Map)"
-)
-
-st.plotly_chart(fig2, use_container_width=True)
-
-# 🌐 Satellite positions (simplified world view)
-st.subheader("🌍 Satellite Longitude Distribution")
-
-fig3 = px.scatter_geo(
-    filtered_df,
-    lon="Longitude",
-    lat="Inclination",
-    hover_name="Name",
-    title="Satellite Distribution in Space View",
-    projection="natural earth"
-)
-
-st.plotly_chart(fig3, use_container_width=True)
-
-st.success("Live Space Tracker Running 🚀")
+st.success("Dashboard running successfully 🚀")
