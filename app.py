@@ -1,117 +1,117 @@
 import streamlit as st
 import pandas as pd
 import requests
-import plotly.express as px
+import numpy as np
 
-st.set_page_config(page_title="Space Tracker", layout="wide")
+st.set_page_config(page_title="Space Mission Control", layout="wide")
 
-st.title("🛰️ Real-Time Space Objects Tracker Dashboard")
-st.write("Live Starlink satellite data from SpaceX API")
+st.title("🛰️ SPACE MISSION CONTROL DASHBOARD")
+st.write("Live Starlink satellite tracking system")
 
 # ---------------- LOAD DATA ---------------- #
 @st.cache_data
 def load_data():
     url = "https://api.spacexdata.com/v4/starlink"
-    response = requests.get(url)
-    data = response.json()
+    data = requests.get(url).json()
     df = pd.json_normalize(data)
     return df
 
 df = load_data()
 
-st.write("### 📦 Dataset Preview")
-st.dataframe(df.head())
-
-# ---------------- COLUMN CLEANING ---------------- #
-cols_map = {
+# ---------------- CLEAN ---------------- #
+df = df.rename(columns={
     "spaceTrack.OBJECT_NAME": "Name",
-    "spaceTrack.LAUNCH_DATE": "Launch Date",
+    "spaceTrack.ALTITUDE": "Altitude",
     "spaceTrack.INCLINATION": "Inclination",
     "spaceTrack.LONGITUDE": "Longitude",
-    "spaceTrack.ALTITUDE": "Altitude",
-}
+    "spaceTrack.LAUNCH_DATE": "Launch Date"
+})
 
-df = df.rename(columns=cols_map)
+df = df.dropna(subset=["Altitude", "Inclination"])
 
-available_cols = [c for c in cols_map.values() if c in df.columns]
-df = df[available_cols].dropna()
+# ---------------- SIDEBAR ---------------- #
+st.sidebar.header("🛰️ Mission Controls")
 
-# ---------------- SIDEBAR FILTER ---------------- #
-st.sidebar.header("🔍 Filters")
+alt_min, alt_max = int(df["Altitude"].min()), int(df["Altitude"].max())
 
-if "Altitude" in df.columns:
-    min_alt = int(df["Altitude"].min())
-    max_alt = int(df["Altitude"].max())
+alt_range = st.sidebar.slider(
+    "Altitude Range (km)",
+    alt_min,
+    alt_max,
+    (alt_min, alt_max)
+)
 
-    alt_range = st.sidebar.slider(
-        "Altitude Range (km)",
-        min_alt,
-        max_alt,
-        (min_alt, max_alt)
-    )
+df = df[(df["Altitude"] >= alt_range[0]) & (df["Altitude"] <= alt_range[1])]
 
-    df = df[(df["Altitude"] >= alt_range[0]) & (df["Altitude"] <= alt_range[1])]
+# ---------------- KPI CARDS ---------------- #
+st.markdown("## 📡 LIVE SATELLITE STATUS")
 
-# ---------------- KPI METRICS ---------------- #
-st.subheader("📊 Key Metrics")
-
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    st.metric("Total Satellites", len(df))
+    st.markdown("### 🛰️ Total Objects")
+    st.markdown(f"## {len(df)}")
 
 with col2:
-    if "Altitude" in df.columns:
-        st.metric("Avg Altitude", f"{df['Altitude'].mean():.2f} km")
+    st.markdown("### 📍 Avg Altitude")
+    st.markdown(f"## {df['Altitude'].mean():.1f} km")
 
 with col3:
-    if "Inclination" in df.columns:
-        st.metric("Avg Inclination", f"{df['Inclination'].mean():.2f}°")
+    st.markdown("### 🔭 Avg Inclination")
+    st.markdown(f"## {df['Inclination'].mean():.1f}°")
 
-# ---------------- VISUAL 1 ---------------- #
-st.subheader("📊 Altitude Distribution (Density View)")
+with col4:
+    max_alt = df["Altitude"].max()
+    st.markdown("### 🚀 Max Altitude")
+    st.markdown(f"## {max_alt:.1f} km")
 
-if "Altitude" in df.columns:
-    fig1 = px.histogram(
-        df,
-        x="Altitude",
-        nbins=40,
-        color_discrete_sequence=["#00BFFF"],
-        title="Satellite Altitude Distribution"
-    )
-    fig1.update_layout(bargap=0.1)
-    st.plotly_chart(fig1, use_container_width=True)
+# ---------------- VISUAL: ALTITUDE BARS ---------------- #
+st.markdown("## 🌌 Satellite Altitude Status")
 
-# ---------------- VISUAL 2 ---------------- #
-st.subheader("🛰️ Orbital Structure Map")
+for i in range(0, min(10, len(df))):
+    name = df.iloc[i]["Name"] if "Name" in df.columns else f"Satellite {i}"
+    alt = df.iloc[i]["Altitude"]
 
-if "Inclination" in df.columns and "Altitude" in df.columns:
-    fig2 = px.scatter(
-        df,
-        x="Inclination",
-        y="Altitude",
-        color="Altitude",
-        color_continuous_scale="Viridis",
-        size_max=10,
-        title="Inclination vs Altitude (Orbital Pattern)"
-    )
-    st.plotly_chart(fig2, use_container_width=True)
+    progress = int((alt / df["Altitude"].max()) * 100)
 
-# ---------------- VISUAL 3 ---------------- #
-st.subheader("🌌 Space Object Heat View")
+    st.write(f"🛰️ **{name}**  | Altitude: {alt:.2f} km")
+    st.progress(min(progress, 100))
 
-if "Longitude" in df.columns and "Altitude" in df.columns:
-    fig3 = px.density_heatmap(
-        df,
-        x="Longitude",
-        y="Altitude",
-        color_continuous_scale="Turbo",
-        title="Spatial Density of Satellites"
-    )
-    st.plotly_chart(fig3, use_container_width=True)
+# ---------------- VISUAL GRID (CLEAN VIEW) ---------------- #
+st.markdown("## 🧭 Orbital Intelligence Grid")
 
-# ---------------- RAW DATA ---------------- #
-if st.checkbox("Show raw data"):
+grid_df = df.head(12)
+
+cols = st.columns(3)
+
+for i, row in enumerate(grid_df.itertuples()):
+    with cols[i % 3]:
+        st.markdown(
+            f"""
+            ### 🛰️ {row.Name if hasattr(row, 'Name') else 'Unknown'}
+
+            📍 Altitude: **{row.Altitude:.1f} km**  
+            🔭 Inclination: **{row.Inclination:.1f}°**  
+            🌐 Longitude: **{getattr(row, 'Longitude', 'N/A')}**
+
+            ---
+            """
+        )
+
+# ---------------- SPACE HEALTH INDICATOR ---------------- #
+st.markdown("## 🧠 System Health Indicator")
+
+avg_alt = df["Altitude"].mean()
+
+if avg_alt < 400:
+    st.success("🟢 Low Orbit Stability - Normal Operations")
+elif avg_alt < 550:
+    st.warning("🟡 Medium Orbit Density - Monitor Traffic")
+else:
+    st.error("🔴 High Orbit Congestion - Risk Zone")
+
+# ---------------- OPTIONAL RAW DATA ---------------- #
+with st.expander("📦 View Raw Satellite Data"):
     st.dataframe(df)
 
-st.success("🚀 Aesthetic Space Dashboard Loaded Successfully")
+st.success("🚀 Mission Control Dashboard Active")
